@@ -1,4 +1,6 @@
 import os
+from fastapi.middleware.cors import CORSMiddleware
+from app.config import settings
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
