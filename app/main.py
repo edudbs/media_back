@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.schemas import RecommendRequest, Recommendation, ContentItem, FeedbackRequest, ProfileRequest, PlaylistRequest
+from app.schemas import RecommendRequest, Recommendation
 from app.recommender import recommend
 from app.config import settings
 from app.feedback import Feedback
@@ -11,10 +11,12 @@ from app.sessions import set_session, get_session
 from app.profiles import save_profile, load_profiles
 from app.playlist import generate_playlist
 
+from app.schemas_extended import FeedbackRequest, ProfileRequest, PlaylistRequest
+
 from openai import OpenAI
 
 # -----------------------------------------------------
-# 🔒 Validação automática das variáveis de ambiente
+# Validação das variáveis de ambiente
 # -----------------------------------------------------
 REQUIRED_ENV_VARS = {
     "OPENAI_API_KEY": settings.openai_api_key,
@@ -26,38 +28,37 @@ missing = [key for key, value in REQUIRED_ENV_VARS.items() if not value]
 if missing:
     raise RuntimeError(
         f"❌ Environment variables missing: {', '.join(missing)}.\n"
-        f"Configure them no .env ou nas variáveis do Render."
+        f"Configure no .env ou no painel do Render."
     )
 
 # -----------------------------------------------------
-# 🔧 Inicialização
+# Inicialização
 # -----------------------------------------------------
 client = OpenAI(api_key=settings.openai_api_key)
 app = FastAPI(title="Media Recommender API")
 
 # -----------------------------------------------------
-# 🌐 CORS — necessário para o front-end do Vercel
+# CORS
 # -----------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # pode trocar depois para seu domínio do Vercel
+    allow_origins=["*"],  # substituir pelo domínio do front-end
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # -----------------------------------------------------
-# 🩺 Health check
+# Health check
 # -----------------------------------------------------
 @app.get("/health")
 async def health():
     return {"status": "ok"}
 
-
 # -----------------------------------------------------
-# 🎬 Rota principal de recomendações
+# Endpoint de recomendação
 # -----------------------------------------------------
-@app.post("/recommend", response_model=list[Recommendation])
+@app.post("/recommend", response_model=List[Recommendation])
 async def recommend_endpoint(req: RecommendRequest, user_id: str = "anon", strategy: str = "hybrid"):
     try:
         if strategy == "hybrid":
@@ -66,16 +67,14 @@ async def recommend_endpoint(req: RecommendRequest, user_id: str = "anon", strat
         else:
             recs = await recommend(req.preferences, limit=req.limit, user_id=user_id)
 
-        # salva últimas recomendações na sessão
         set_session(user_id, {"last_recs": [r.item.dict() for r in recs]})
         return recs
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 # -----------------------------------------------------
-# 👍 Feedback do usuário
+# Endpoint de feedback
 # -----------------------------------------------------
 @app.post("/feedback")
 async def post_feedback(feedback: FeedbackRequest):
@@ -95,15 +94,13 @@ async def post_feedback(feedback: FeedbackRequest):
     save_feedback(fb)
     return {"status": "ok", "saved": feedback}
 
-
 # -----------------------------------------------------
-# 👤 Perfil de usuário
+# Endpoints de perfil
 # -----------------------------------------------------
 @app.post("/profile/create")
 async def create_profile(req: ProfileRequest):
     save_profile(req.user_id, req.name, req.preferences)
     return {"status": "ok", "message": f"Perfil '{req.name}' criado!"}
-
 
 @app.post("/profile/activate")
 async def activate_profile(req: ProfileRequest):
@@ -115,9 +112,8 @@ async def activate_profile(req: ProfileRequest):
     set_session(req.user_id, {"profile": profile})
     return {"status": "ok", "message": f"Perfil '{req.name}' ativado."}
 
-
 # -----------------------------------------------------
-# 🎵 Gerar playlist
+# Endpoint de playlist
 # -----------------------------------------------------
 @app.post("/playlist")
 async def create_playlist(req: PlaylistRequest):
