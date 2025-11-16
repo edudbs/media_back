@@ -2,7 +2,6 @@
 
 import asyncio
 from typing import List, Dict
-import numpy as np
 
 from app.schemas import Preferences, Recommendation, ContentItem
 from app.feedback_store import load_feedback_for_user
