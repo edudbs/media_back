@@ -1,1 +1,35 @@
+services:
+  - type: web
+    name: media-recommender-backend
+    env: python
+    plan: free
+
+    # Onde está seu código
+    rootDir: . 
+
+    buildCommand: pip install -r requirements.txt
+
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
+    autoDeploy: true
+
+    envVars:
+      # Obrigatória
+      - key: OPENAI_API_KEY
+        sync: false
+
+      # Opcionais: defina apenas se realmente usar
+      - key: YOUTUBE_API_KEY
+        sync: false
+      - key: TMDB_API_KEY
+        sync: false
+
+      # Banco de dados — opcional (default local SQLite)
+      - key: DATABASE_URL
+        value: "sqlite+aiosqlite:///./media_recommender.db"
+
+    healthCheckPath: /health
+    healthCheckTimeout: 300
+
+    runtime: python3
 
