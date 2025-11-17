@@ -69,7 +69,7 @@ async def health():
 
 # NOVO HANDLER: Permite que a requisição OPTIONS (preflight) passe sem corpo JSON
 @app.options("/recommend")
-async def options_recommend():
+def options_recommend():
     """Lida com a requisição OPTIONS CORS para /recommend."""
     return {"status": "ok"}
 
@@ -82,7 +82,7 @@ def get_feedbacks(db: Session = Depends(get_db)):
 
 # Endpoint de recomendação (AGORA COM DB INJETADO E CHAMADA CORRIGIDA)
 @app.post("/recommend", response_model=List[Recommendation])
-def recommend_endpoint(
+async def recommend_endpoint(
     req: RecommendRequest, 
     user_id: str = "anon", 
     strategy: str = "hybrid",
