@@ -82,7 +82,7 @@ def get_feedbacks(db: Session = Depends(get_db)):
 
 # Endpoint de recomendação (AGORA COM DB INJETADO E CHAMADA CORRIGIDA)
 @app.post("/recommend", response_model=List[Recommendation])
-async def recommend_endpoint(
+def recommend_endpoint(
     req: RecommendRequest, 
     user_id: str = "anon", 
     strategy: str = "hybrid",
