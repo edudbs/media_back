@@ -6,7 +6,7 @@ from app.schemas import RecommendRequest, Recommendation
 from app.recommender import recommend
 from app.config import settings
 from app.feedback import Feedback
-from app.feedback_store import save_feedback # A função agora espera 'db'
+from app.feedback_store import save_feedback, get_all_feedback
 from app.embeddings import embed_text
 from app.sessions import set_session, get_session
 from app.profiles import save_profile, load_profiles, get_profile_by_name # As funções agora esperam 'db'
@@ -66,6 +66,13 @@ app.add_middleware(
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+# NOVO ENDPOINT: Leitura de todos os feedbacks (COM DB)
+@app.get("/feedbacks")
+def get_feedbacks(db: Session = Depends(get_db)):
+    """Retorna todos os feedbacks cadastrados no banco de dados."""
+    # Chamando a função de persistência que consulta o DB
+    return get_all_feedback(db=db)
 
 # Endpoint de recomendação (AINDA NÃO USA DB)
 @app.post("/recommend", response_model=List[Recommendation])
