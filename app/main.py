@@ -74,20 +74,30 @@ def get_feedbacks(db: Session = Depends(get_db)):
     # Chamando a função de persistência que consulta o DB
     return get_all_feedback(db=db)
 
-# Endpoint de recomendação (AINDA NÃO USA DB)
+# Endpoint de recomendação (AGORA USA DB)
 @app.post("/recommend", response_model=List[Recommendation])
-async def recommend_endpoint(req: RecommendRequest, user_id: str = "anon", strategy: str = "hybrid"):
+async def recommend_endpoint(
+    req: RecommendRequest, 
+    user_id: str = "anon", 
+    strategy: str = "hybrid",
+    db: Session = Depends(get_db) # <--- NOVO: Injeção de dependência do DB
+):
     try:
         if strategy == "hybrid":
             from app.hybrid_recommender import hybrid_recommend
-            recs = await hybrid_recommend(req.preferences, user_id=user_id, limit=req.limit)
+            # Chamada corrigida: passamos o objeto 'req' e a sessão 'db'
+            recs = await hybrid_recommend(req=req, user_id=user_id, limit=req.limit, db=db) 
         else:
+            # Lógica para o recomendador base (sem DB)
+            from app.recommender import recommend
             recs = await recommend(req.preferences, limit=req.limit, user_id=user_id)
-        # set_session/get_session ainda estão em memória/arquivo. (Opcional migrar)
+
+        # set_session/get_session (lógica de histórico em memória, mantida)
         set_session(user_id, {"last_recs": [r.item.dict() for r in recs]})
         return recs
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Erro na recomendação: {e}") # Adicionado print para depuração
+        raise HTTPException(status_code=500, detail=f"Erro no serviço de recomendação: {str(e)}")
 
 # Endpoint de feedback (CORRIGIDO: Agora injeta DB e chama save_feedback com 'db')
 @app.post("/feedback")
