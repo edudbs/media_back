@@ -8,6 +8,6 @@ pydantic==1.10.17
 
 openai==1.43.0
 
-# Se você usar SQLite async:
+# Se você usar o SQLite async:
 aiosqlite==0.19.0
 SQLAlchemy==2.0.31
