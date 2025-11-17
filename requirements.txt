@@ -7,3 +7,5 @@ openai==1.43.0
 SQLAlchemy==2.0.31
 psycopg2
 pydantic-settings
+
+numpy
