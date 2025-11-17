@@ -1,16 +1,21 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session # NOVO: Para injetar a sessão do DB
 
 from app.schemas import RecommendRequest, Recommendation
 from app.recommender import recommend
 from app.config import settings
 from app.feedback import Feedback
-from app.feedback_store import save_feedback
+from app.feedback_store import save_feedback # A função agora espera 'db'
 from app.embeddings import embed_text
 from app.sessions import set_session, get_session
-from app.profiles import save_profile, load_profiles
+from app.profiles import save_profile, load_profiles, get_profile_by_name # As funções agora esperam 'db'
 from app.playlist import generate_playlist
 from app.schemas_extended import FeedbackRequest, ProfileRequest, PlaylistRequest
+
+# Imports de conexão com o DB
+from app.database import engine, Base, get_db # NOVO: Funções de conexão e dependência
+from . import models # NOVO: Importa os modelos (tabelas)
 
 from openai import OpenAI
 from typing import List
@@ -30,11 +35,29 @@ if missing:
 client = OpenAI(api_key=settings.openai_api_key)
 app = FastAPI(title="Media Recommender API")
 
-# CORS
+# --- INICIALIZAÇÃO DO BANCO DE DADOS ---
+# Cria as tabelas (Profile, Feedback) no Supabase se elas não existirem
+try:
+    # A base de metadados cria todas as tabelas definidas em app/models.py
+    models.Base.metadata.create_all(bind=engine)
+    print("✅ Tabelas do banco de dados verificadas/criadas no Supabase.")
+except Exception as e:
+    print(f"❌ ERRO CRÍTICO ao conectar ou criar tabelas: {e}")
+    # É importante lançar o erro para que o Render saiba que o serviço falhou
+    raise e 
+# ----------------------------------------
+
+# --- CORREÇÃO DE CORS ---
+# *** SUBSTITUA ESTA URL PELA SUA URL REAL DO VERCEL! ***
+origins = [
+    "https://SEU-PROJETO-FRONT.vercel.app",  
+    "http://localhost:3000",
+    "http://localhost:5173",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # pode trocar para domínio do front-end
-    allow_credentials=True,
+    allow_origins=origins,       # USAR LISTA ESPECÍFICA, NÃO "*"
+    allow_credentials=True,      
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -44,7 +67,7 @@ app.add_middleware(
 async def health():
     return {"status": "ok"}
 
-# Endpoint de recomendação
+# Endpoint de recomendação (AINDA NÃO USA DB)
 @app.post("/recommend", response_model=List[Recommendation])
 async def recommend_endpoint(req: RecommendRequest, user_id: str = "anon", strategy: str = "hybrid"):
     try:
@@ -53,40 +76,57 @@ async def recommend_endpoint(req: RecommendRequest, user_id: str = "anon", strat
             recs = await hybrid_recommend(req.preferences, user_id=user_id, limit=req.limit)
         else:
             recs = await recommend(req.preferences, limit=req.limit, user_id=user_id)
+        # set_session/get_session ainda estão em memória/arquivo. (Opcional migrar)
         set_session(user_id, {"last_recs": [r.item.dict() for r in recs]})
         return recs
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Endpoint de feedback
+# Endpoint de feedback (CORRIGIDO: Agora injeta DB e chama save_feedback com 'db')
 @app.post("/feedback")
-async def post_feedback(feedback: FeedbackRequest):
+async def post_feedback(feedback: FeedbackRequest, db: Session = Depends(get_db)): # <-- FIX 1: INJETAR DB
     emb = None
     if feedback.liked:
         last_recs = get_session(feedback.user_id).get("last_recs", [])
         found = next((i for i in last_recs if i.get("id") == feedback.item_id), None)
         if found:
             emb = await embed_text(f"{found.get('title')} {found.get('description', '')}")
+            
     fb = Feedback(user_id=feedback.user_id, item_id=feedback.item_id, liked=feedback.liked, embedding=emb)
-    save_feedback(fb)
+    
+    # FIX 2: PASSAR O OBJETO DB PARA A FUNÇÃO
+    save_feedback(db=db, fb=fb) 
+    
     return {"status": "ok", "saved": feedback}
 
-# Endpoints de perfil
+# Endpoints de perfil (CORRIGIDOS: Agora injetam DB e chamam as funções com 'db')
 @app.post("/profile/create")
-async def create_profile(req: ProfileRequest):
-    save_profile(req.user_id, req.name, req.preferences)
+async def create_profile(req: ProfileRequest, db: Session = Depends(get_db)): # <-- INJETAR DB
+    # PASSAR O OBJETO DB
+    save_profile(db=db, user_id=req.user_id, name=req.name, preferences=req.preferences) 
     return {"status": "ok", "message": f"Perfil '{req.name}' criado!"}
 
 @app.post("/profile/activate")
-async def activate_profile(req: ProfileRequest):
-    profiles = load_profiles(req.user_id)
-    profile = profiles.get(req.name)
-    if not profile:
+async def activate_profile(req: ProfileRequest, db: Session = Depends(get_db)): # <-- INJETAR DB
+    # A função load_profiles também precisa do DB, mas ela não está
+    # sendo importada aqui. Vamos usar a função get_profile_by_name, que é mais direta.
+    
+    # PASSAR O OBJETO DB
+    profile_model = get_profile_by_name(db=db, user_id=req.user_id, name=req.name)
+    
+    if not profile_model:
         raise HTTPException(status_code=404, detail=f"Perfil '{req.name}' não encontrado.")
-    set_session(req.user_id, {"profile": profile})
+    
+    # Converte o modelo do SQLAlchemy de volta para um dict para salvar na sessão
+    profile_data = {
+        "name": profile_model.name,
+        "preferences": profile_model.preferences
+    }
+    
+    set_session(req.user_id, {"profile": profile_data})
     return {"status": "ok", "message": f"Perfil '{req.name}' ativado."}
 
-# Endpoint de playlist
+# Endpoint de playlist (NÃO precisa de DB)
 @app.post("/playlist")
 async def create_playlist(req: PlaylistRequest):
     recs = await recommend(req.preferences, limit=req.limit, user_id=req.user_id)
