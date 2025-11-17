@@ -67,6 +67,12 @@ app.add_middleware(
 async def health():
     return {"status": "ok"}
 
+# NOVO HANDLER: Permite que a requisição OPTIONS (preflight) passe sem corpo JSON
+@app.options("/recommend")
+async def options_recommend():
+    """Lida com a requisição OPTIONS CORS para /recommend."""
+    return {"status": "ok"}
+
 # NOVO ENDPOINT: Leitura de todos os feedbacks (COM DB)
 @app.get("/feedbacks")
 def get_feedbacks(db: Session = Depends(get_db)):
@@ -74,29 +80,27 @@ def get_feedbacks(db: Session = Depends(get_db)):
     # Chamando a função de persistência que consulta o DB
     return get_all_feedback(db=db)
 
-# Endpoint de recomendação (AGORA USA DB)
+# Endpoint de recomendação (AGORA COM DB INJETADO E CHAMADA CORRIGIDA)
 @app.post("/recommend", response_model=List[Recommendation])
 async def recommend_endpoint(
     req: RecommendRequest, 
     user_id: str = "anon", 
     strategy: str = "hybrid",
-    db: Session = Depends(get_db) # <--- NOVO: Injeção de dependência do DB
+    db: Session = Depends(get_db) # <--- ESSENCIAL: Injeção do DB
 ):
     try:
         if strategy == "hybrid":
             from app.hybrid_recommender import hybrid_recommend
-            # Chamada corrigida: passamos o objeto 'req' e a sessão 'db'
+            # ESSENCIAL: Passar o objeto DB (db=db) na chamada
             recs = await hybrid_recommend(req=req, user_id=user_id, limit=req.limit, db=db) 
         else:
-            # Lógica para o recomendador base (sem DB)
             from app.recommender import recommend
             recs = await recommend(req.preferences, limit=req.limit, user_id=user_id)
-
-        # set_session/get_session (lógica de histórico em memória, mantida)
+        
         set_session(user_id, {"last_recs": [r.item.dict() for r in recs]})
         return recs
     except Exception as e:
-        print(f"Erro na recomendação: {e}") # Adicionado print para depuração
+        print(f"Erro na recomendação: {e}") 
         raise HTTPException(status_code=500, detail=f"Erro no serviço de recomendação: {str(e)}")
 
 # Endpoint de feedback (CORRIGIDO: Agora injeta DB e chama save_feedback com 'db')
