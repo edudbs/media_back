@@ -1,25 +1,24 @@
 import os
-from pydantic import Field, ValidationError
-# CORRIGIDO: BaseSettings e SettingsConfigDict agora vêm de pydantic_settings
+# Importação BaseSettings e ConfigDict do pydantic_settings
 from pydantic_settings import BaseSettings, SettingsConfigDict 
+from pydantic import Field, ValidationError
 
 class Settings(BaseSettings):
-    # Configuração de Ambiente Pydantic v2 (substitui a classe Config)
+    # Configuração de Ambiente Pydantic v2 (substitui a classe Config da v1)
     model_config = SettingsConfigDict(
         env_file=".env",
-        case_sensitive=True # Mantém a sensibilidade a caixa, como você tinha definido
+        case_sensitive=True 
     )
 
-    # Variáveis OBRIGATÓRIAS
-    # Usando validation_alias para mapear o nome da variável Python para a Variável de Ambiente (VE)
+    # Variável OBRIGATÓRIA
     openai_api_key: str = Field(..., validation_alias="OPENAI_API_KEY")
 
-    # Variáveis Opcionais (aproveitando as que você tinha)
-    youtube_api_key: str = Field(None, validation_alias="YOUTUBE_API_KEY")
-    tmdb_api_key: str = Field(None, validation_alias="TMDB_API_KEY")
+    # Variáveis Opcionais (CORRIGIDO: Tipagem alterada para 'str | None' para aceitar o valor None)
+    # Se estas Variáveis de Ambiente não estiverem no Render, elas agora aceitam None sem falhar.
+    youtube_api_key: str | None = Field(None, validation_alias="YOUTUBE_API_KEY")
+    tmdb_api_key: str | None = Field(None, validation_alias="TMDB_API_KEY")
 
-    # URL do Banco de Dados. O padrão é SQLite, mas a VE DATABASE_URL no Render 
-    # deve ser usada para o Supabase.
+    # URL do Banco de Dados
     database_url: str = Field(
         "sqlite+aiosqlite:///./media_recommender.db",
         validation_alias="DATABASE_URL"
@@ -29,7 +28,7 @@ class Settings(BaseSettings):
 try:
     settings = Settings()
 except ValidationError as e:
-    # A lógica de validação da sua versão antiga é compatível com Pydantic v2
+    # A lógica de validação customizada está preservada
     missing = [err["loc"][0] for err in e.errors()]
 
     raise RuntimeError(
@@ -38,3 +37,6 @@ except ValidationError as e:
         + "\n".join([f" - {m}" for m in missing])
         + "\n\nDefina-as no painel do Render antes do deploy.\n"
     )
+```eof
+
+Por favor, substitua seu arquivo local, faça o `commit` e o `push` para que o Render possa iniciar o seu serviço.
